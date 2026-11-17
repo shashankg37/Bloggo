@@ -19,8 +19,12 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from langgraph.types import Command
+
+from typing import Literal
+
 from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from blog_agent import config, graph as graph_module
 from blog_agent.persistence import ThreadSafeSqliteSaver
@@ -43,7 +47,21 @@ class RunStatus(BaseModel):
     run_id: str
     status: str  # "running" | "awaiting_gate" | "completed" | "error"
     active_node: str | None = None
+    gate: dict | None = None  # what the pending Gate wants approved
     error: str | None = None
+
+
+class GateDecisionRequest(BaseModel):
+    """The human's answer to a pending Gate."""
+
+    decision: Literal["approve", "revise"]
+    feedback: str | None = None
+
+    @model_validator(mode="after")
+    def revise_requires_feedback(self):
+        if self.decision == "revise" and not (self.feedback or "").strip():
+            raise ValueError("revise requires feedback text")
+        return self
 
 
 def create_app(settings: config.Settings | None = None) -> FastAPI:
@@ -112,7 +130,40 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
 
         def execute() -> None:
             try:
+                # A Gate pause makes invoke return; only real errors throw.
                 graph.invoke(initial, run_config)
+            except Exception as exc:  # noqa: BLE001 — surface any stage failure as Run state
+                graph.update_state(
+                    run_config, {"error": f"{type(exc).__name__}: {exc}"}
+                )
+
+        app.state.executor.submit(execute)
+        return {"run_id": run_id, "status": "running"}
+
+    @app.post("/runs/{run_id}/resume", status_code=202)
+    def resume_run(run_id: str, gate_decision: GateDecisionRequest) -> dict:
+        graph = app.state.graph
+        run_config = {
+            "configurable": {
+                "thread_id": run_id,
+                "runs_dir": str(settings.runs_dir),
+            }
+        }
+        snapshot = graph.get_state(run_config)
+        if not snapshot.values:
+            raise HTTPException(status_code=404, detail=f"Unknown Run: {run_id}")
+        if not any(i for task in snapshot.tasks for i in task.interrupts):
+            raise HTTPException(status_code=409, detail="Run is not awaiting a Gate")
+
+        payload = (
+            {"decision": "approve"}
+            if gate_decision.decision == "approve"
+            else {"decision": "revise", "feedback": gate_decision.feedback}
+        )
+
+        def execute() -> None:
+            try:
+                graph.invoke(Command(resume=payload), run_config)
             except Exception as exc:  # noqa: BLE001 — surface any stage failure as Run state
                 graph.update_state(
                     run_config, {"error": f"{type(exc).__name__}: {exc}"}
@@ -140,8 +191,9 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
             )
         interrupts = [i for task in snapshot.tasks for i in task.interrupts]
         if interrupts:
-            # Gate payload exposure arrives with the Gate stages (ticket 04).
-            return RunStatus(run_id=run_id, status="awaiting_gate")
+            return RunStatus(
+                run_id=run_id, status="awaiting_gate", gate=interrupts[0].value
+            )
         if not snapshot.next:
             return RunStatus(run_id=run_id, status="completed")
         return RunStatus(

@@ -4,7 +4,9 @@ Tests act as API clients only — they never touch the graph, the checkpointer,
 or node functions. Status transitions are observed by polling.
 """
 
-from tests.helpers import start_run, wait_for_status
+from langchain_core.messages import AIMessage
+
+from tests.helpers import start_run, wait_for_gate, wait_for_status
 
 
 def test_start_run_returns_a_run_identifier(client, fake_chat_model, offline_search) -> None:
@@ -18,9 +20,11 @@ def test_start_run_returns_a_run_identifier(client, fake_chat_model, offline_sea
 
 def test_run_executes_and_reaches_completed(client, fake_chat_model, offline_search) -> None:
     run_id = start_run(client)
+    wait_for_gate(client, run_id)  # the pipeline pauses at Gate 1 (ticket 04)
+
+    client.post(f"/runs/{run_id}/resume", json={"decision": "approve"})
 
     final = wait_for_status(client, run_id, "completed")
-
     assert final["run_id"] == run_id
 
 
