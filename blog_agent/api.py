@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from blog_agent import config, graph as graph_module
@@ -101,7 +101,12 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
             "revision_count": 0,
             "error": "",
         }
-        run_config = {"configurable": {"thread_id": run_id}}
+        run_config = {
+            "configurable": {
+                "thread_id": run_id,
+                "runs_dir": str(settings.runs_dir),
+            }
+        }
         graph = app.state.graph
         app.state.known_runs.add(run_id)
 
@@ -141,6 +146,28 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
             return RunStatus(run_id=run_id, status="completed")
         return RunStatus(
             run_id=run_id, status="running", active_node=snapshot.next[0]
+        )
+
+    @app.get("/runs/{run_id}/artifacts")
+    def list_artifacts(run_id: str) -> dict:
+        folder = Path(settings.runs_dir, run_id)
+        if not folder.is_dir():
+            raise HTTPException(status_code=404, detail=f"Unknown Run: {run_id}")
+        artifacts = [
+            {"name": artifact.name, "size": artifact.stat().st_size}
+            for artifact in sorted(folder.iterdir())
+            if artifact.is_file()
+        ]
+        return {"run_id": run_id, "artifacts": artifacts}
+
+    @app.get("/runs/{run_id}/artifacts/{filename}")
+    def fetch_artifact(run_id: str, filename: str) -> Response:
+        folder = (Path(settings.runs_dir) / run_id).resolve()
+        target = (folder / filename).resolve()
+        if not target.is_relative_to(folder) or not target.is_file():
+            raise HTTPException(status_code=404, detail=f"Unknown Artifact: {filename}")
+        return Response(
+            content=target.read_text(encoding="utf-8"), media_type="text/markdown"
         )
 
     return app
