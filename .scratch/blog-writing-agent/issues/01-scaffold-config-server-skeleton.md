@@ -4,10 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Dependencies install and the server boots and answers an HTTP request
-- [ ] A git repo exists with the initial commit, and `.env`, checkpoint data, and Run output folders are ignored
-- [ ] The config module reads `.env` and exposes the chat-model factory; blank `MODEL_NAME` is accepted without error at boot
-- [ ] The scripted fake chat model can be injected by overriding the config layer; tests need no API key and no network
-- [ ] A smoke test passes through the HTTP seam
+- [x] Dependencies install and the server boots and answers an HTTP request
+- [x] A git repo exists with the initial commit, and `.env`, checkpoint data, and Run output folders are ignored
+- [x] The config module reads `.env` and exposes the chat-model factory; blank `MODEL_NAME` is accepted without error at boot
+- [x] The scripted fake chat model can be injected by overriding the config layer; tests need no API key and no network
+- [x] A smoke test passes through the HTTP seam
+
+**Notes:** Smart App Control on this machine blocks the compiled `xxhash` and `ormsgpack` DLLs; both are covered by pure-Python compat shims that activate only when the real extension cannot load, verified by round-trip tests through LangGraph's own checkpoint serializer. Run commands must use the `uv run python -m ...` form (the `.venv\Scripts` exes are blocked by the same policy).

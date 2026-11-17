@@ -4,11 +4,13 @@
 
 **Blocked by:** 01: Scaffold, config, and server skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `POST /runs` with a Brief returns a Run identifier and the Run persists across requests
-- [ ] `GET /runs/{id}` reports the Run's status
-- [ ] Unknown Run identifiers return a structured, client-friendly error
-- [ ] The Run's Artifact folder is created on disk under the shared runs location
-- [ ] The minimal pipeline executes through the SQLite checkpointer, with state persisted in the checkpoint
-- [ ] HTTP-seam tests cover start, poll, and error cases using the fake chat model
+- [x] `POST /runs` with a Brief returns a Run identifier and the Run persists across requests
+- [x] `GET /runs/{id}` reports the Run's status
+- [x] Unknown Run identifiers return a structured, client-friendly error
+- [x] The Run's Artifact folder is created on disk under the shared runs location
+- [x] The minimal pipeline executes through the SQLite checkpointer, with state persisted in the checkpoint
+- [x] HTTP-seam tests cover start, poll, and error cases using the fake chat model
+
+**Notes:** Run status is derived from the persisted Checkpoint (with an in-process registry only to cover the pre-first-checkpoint window), so restart-resume needs no extra bookkeeping. Two infrastructure pieces arrived with this ticket: a thread-safe wrapper around the SQLite checkpointer (LangGraph's saver is single-threaded; the API polls while workers execute) and an `error` field on the Run state for stage failures — a small addition to the spec'd schema. Server invocations must use the `uv run python -m uvicorn ...` form.
