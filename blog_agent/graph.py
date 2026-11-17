@@ -22,6 +22,9 @@ def build_graph(checkpointer: BaseCheckpointSaver):
     builder.add_node("researcher", nodes.researcher_stage)
     builder.add_node("outline", nodes.outline_stage)
     builder.add_node("outline_gate", nodes.outline_gate)
+    builder.add_node("draft", nodes.draft_stage)
+    builder.add_node("critic", nodes.critic_stage)
+    builder.add_node("force_accept", nodes.force_accept_stage)
     builder.add_edge(START, "brief")
     builder.add_edge("brief", "plan")
     builder.add_edge("plan", "researcher")
@@ -30,6 +33,13 @@ def build_graph(checkpointer: BaseCheckpointSaver):
     builder.add_conditional_edges(
         "outline_gate",
         nodes.route_after_outline_gate,
-        ["outline", END],
+        ["outline", "draft"],
     )
+    builder.add_edge("draft", "critic")
+    builder.add_conditional_edges(
+        "critic",
+        nodes.route_after_critic,
+        ["draft", "force_accept", END],
+    )
+    builder.add_edge("force_accept", END)
     return builder.compile(checkpointer=checkpointer)

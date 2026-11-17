@@ -6,7 +6,7 @@ or node functions. Status transitions are observed by polling.
 
 from langchain_core.messages import AIMessage
 
-from tests.helpers import start_run, wait_for_gate, wait_for_status
+from tests.helpers import script_draft_and_approve, start_run, wait_for_gate, wait_for_status
 
 
 def test_start_run_returns_a_run_identifier(client, fake_chat_model, offline_search) -> None:
@@ -20,7 +20,9 @@ def test_start_run_returns_a_run_identifier(client, fake_chat_model, offline_sea
 
 def test_run_executes_and_reaches_completed(client, fake_chat_model, offline_search) -> None:
     run_id = start_run(client)
-    wait_for_gate(client, run_id)  # the pipeline pauses at Gate 1 (ticket 04)
+    gate = wait_for_gate(client, run_id)  # the pipeline pauses at Gate 1 (ticket 04)
+    assert gate["outline"]
+    script_draft_and_approve(fake_chat_model)
 
     client.post(f"/runs/{run_id}/resume", json={"decision": "approve"})
 

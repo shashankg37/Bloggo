@@ -7,7 +7,7 @@ outline — and the search tool is stubbed offline. Decisions flow through
 
 from langchain_core.messages import AIMessage
 
-from tests.helpers import start_run, wait_for_gate, wait_for_status
+from tests.helpers import script_draft_and_approve, start_run, wait_for_gate, wait_for_status
 
 
 def script_to_outline(model, outline: str) -> None:
@@ -49,6 +49,7 @@ def test_approving_gate_1_completes_the_run(
     script_to_outline(fake_chat_model, "# Outline\n- Intro only")
     run_id = start_run(client)
     wait_for_gate(client, run_id)
+    script_draft_and_approve(fake_chat_model)
 
     response = client.post(f"/runs/{run_id}/resume", json={"decision": "approve"})
 
@@ -81,6 +82,7 @@ def test_revising_reruns_outline_with_feedback_and_repause(
     fetched = client.get(f"/runs/{run_id}/artifacts/outline.md")
     assert "persistence" in fetched.text
 
+    script_draft_and_approve(fake_chat_model, draft="# Draft v2 with persistence section")
     client.post(f"/runs/{run_id}/resume", json={"decision": "approve"})
     wait_for_status(client, run_id, "completed")
 
@@ -115,6 +117,7 @@ def test_resuming_a_run_not_awaiting_a_gate_is_a_conflict(
     script_to_outline(fake_chat_model, "# Outline\n- Intro only")
     run_id = start_run(client)
     wait_for_gate(client, run_id)
+    script_draft_and_approve(fake_chat_model)
     client.post(f"/runs/{run_id}/resume", json={"decision": "approve"})
     wait_for_status(client, run_id, "completed")
 

@@ -7,7 +7,7 @@ Everything is verified through status transitions and Artifacts.
 
 from langchain_core.messages import AIMessage
 
-from tests.helpers import start_run, wait_for_status
+from tests.helpers import script_draft_and_approve, start_run, wait_for_status
 
 
 def script_research(model, plan: str, notes: str, query: str = "agentic state") -> None:
@@ -44,6 +44,7 @@ def test_plan_and_research_produce_notes_and_artifact(client, fake_chat_model, o
     assert "LangGraph state flows through nodes" in fetched.text
     assert fetched.headers["content-type"].startswith("text/markdown")
 
+    script_draft_and_approve(fake_chat_model)
     client.post(f"/runs/{run_id}/resume", json={"decision": "approve"})
     wait_for_status(client, run_id, "completed")
 
@@ -59,6 +60,7 @@ def test_researcher_can_finish_without_searching(client, fake_chat_model, offlin
     fetched = client.get(f"/runs/{run_id}/artifacts/research.md")
     assert "Model knowledge suffices here" in fetched.text
 
+    script_draft_and_approve(fake_chat_model)
     client.post(f"/runs/{run_id}/resume", json={"decision": "approve"})
     wait_for_status(client, run_id, "completed")
 

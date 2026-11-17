@@ -6,14 +6,20 @@ no API key and no network. Both are injected by overriding:
 - `blog_agent.tools.make_search_tool` — a stub search tool
 
 An `Exception` entry in the script makes the model raise, for Run error-path
-tests.
+tests. `with_structured_output` runs the script, then parses the scripted
+JSON into the requested schema — so Critic Verdicts are scripted exactly
+like every other response.
 """
+
+import json
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
+from pydantic import BaseModel
 
 
 def scripted_model(*responses: str) -> FakeListChatModel:
@@ -46,6 +52,18 @@ class ScriptedChatModel(BaseChatModel):
 
     def bind_tools(self, tools, **kwargs):
         return self
+
+    def with_structured_output(self, schema, **kwargs):
+        """Fake structured output: run the script, then parse its JSON."""
+
+        def _parse(messages):
+            response = self.invoke(messages)
+            data = json.loads(response.text)
+            if isinstance(schema, type) and issubclass(schema, BaseModel):
+                return schema.model_validate(data)
+            return data
+
+        return RunnableLambda(_parse)
 
 
 def scripted_tool(result: str = "stub search results"):

@@ -3,12 +3,27 @@
 import time
 
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 
 
 def start_run(client: TestClient, topic: str = "Agentic state with LangGraph", **brief) -> str:
     response = client.post("/runs", json={"topic": topic, **brief})
     assert response.status_code == 202, response.text
     return response.json()["run_id"]
+
+
+def script_draft_and_approve(
+    model, draft: str = "# Draft\n\nThe post body.", critique: str = "Ready to publish."
+) -> None:
+    """Extend the script so the Run completes after Gate 1 approval.
+
+    Appends one draft response and one approving Critique (structured-output
+    JSON). Call it before posting the approve decision.
+    """
+    model.responses = model.responses + [
+        AIMessage(content=draft),
+        AIMessage(content=f'{{"critique": "{critique}", "verdict": "approve"}}'),
+    ]
 
 
 def wait_for_status(

@@ -4,8 +4,9 @@ This is the single schema agreed in spec 0001 — no chat-message list; this
 is a task pipeline, not a chatbot. Fields fill in as stages complete, so the
 TypedDict is partial (`total=False`).
 
-The one reducer: `research_notes` accumulates across research passes, so it
-appends instead of overwriting. Every other field is owned by one stage.
+The two reducers: `research_notes` accumulates across research passes and
+`critiques` records every Critique with its Verdict. Every other field is
+owned by one stage.
 """
 
 from __future__ import annotations
@@ -34,10 +35,11 @@ class BlogState(TypedDict, total=False):
 
     # Draft loop
     draft: str
-    critique: str
-    revision_feedback: str
-    revision_count: int
+    critique: str  # the Critic's latest critique (drives redrafting)
     verdict: str  # "revise" | "approve"
+    critiques: Annotated[list[dict], operator.add]  # {"critique": ..., "verdict": ...}
+    revision_count: int
+    outstanding_critique: str  # set when the cap force-accepts the last Draft
 
     # Output
     final_markdown: str

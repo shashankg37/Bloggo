@@ -14,11 +14,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import operator
+from typing import Literal
+
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END
 from langgraph.prebuilt import create_react_agent
 from langgraph.types import interrupt
+from pydantic import BaseModel
 
 from blog_agent import config as app_config
 from blog_agent.state import BlogState
@@ -141,4 +145,81 @@ def route_after_outline_gate(state: BlogState):
     """Revise feedback routes back to the Outline; approval moves on."""
     if state.get("outline_feedback"):
         return "outline"
-    return END  # ticket 05: → draft
+    return "draft"
+
+
+REVISION_CAP = 2
+
+
+class Critique(BaseModel):
+    """The Critic's structured Verdict on a Draft."""
+
+    critique: str
+    verdict: Literal["revise", "approve"]
+
+
+def draft_stage(state: BlogState, config: RunnableConfig) -> dict:
+    """Draft the post from the approved Outline and Research Notes.
+
+    The first pass is draft v1; a redraft (only ever entered on a `revise`
+    Verdict) increments the Revision count and writes the next version. The
+    Critic's outstanding critique is folded into a redraft's prompt.
+    """
+    revision_count = state.get("revision_count", 0)
+    redrafting = state.get("verdict") == "revise"
+    if redrafting:
+        revision_count += 1
+    version = revision_count + 1
+
+    critique_note = (
+        "The Critic rejected the previous draft with this critique; "
+        f"address it fully:\\n{state.get('critique', '')}\\n\\n"
+        if redrafting
+        else ""
+    )
+    model = app_config.create_chat_model()
+    prompt = (
+        "You are writing a blog post.\\n"
+        f"Topic: {state['topic']}\\n"
+        f"Audience: {state.get('audience', 'general readers')}\\n"
+        f"Tone: {state.get('tone', 'conversational')}\\n"
+        f"Target length: {state.get('target_words', 800)} words.\\n\\n"
+        f"Approved outline:\\n{state.get('outline', '')}\\n\\n"
+        f"Research notes:\\n{'\\n'.join(state.get('research_notes', []))}\\n\\n"
+        f"{critique_note}"
+        "Write the full post as markdown. Reply with the post text only."
+    )
+    response = model.invoke([HumanMessage(content=prompt)])
+    draft = response.text
+    write_artifact(config, f"draft_v{version}.md", draft)
+    return {"draft": draft, "revision_count": revision_count}
+
+
+def critic_stage(state: BlogState) -> dict:
+    """Evaluate the Draft; the Verdict decides whether the loop continues."""
+    model = app_config.create_chat_model().with_structured_output(Critique)
+    prompt = (
+        "You are reviewing a blog post draft against its approved outline.\\n\\n"
+        f"Approved outline:\\n{state.get('outline', '')}\\n\\n"
+        f"Draft:\\n{state.get('draft', '')}\\n\\n"
+        "Return a critique: what is wrong or missing (empty praise is not a "
+        "critique), and a verdict: 'revise' unless the draft fully delivers "
+        "the outline."
+    )
+    result = model.invoke([HumanMessage(content=prompt)])
+    entry = {"critique": result.critique, "verdict": result.verdict}
+    return {"critique": result.critique, "verdict": result.verdict, "critiques": [entry]}
+
+
+def route_after_critic(state: BlogState):
+    """Keep revising below the cap; force-accept at the cap; approve moves on."""
+    if state.get("verdict") != "revise":
+        return END  # ticket 06: → publish
+    if state.get("revision_count", 0) < REVISION_CAP:
+        return "draft"
+    return "force_accept"
+
+
+def force_accept_stage(state: BlogState) -> dict:
+    """Revision cap reached: accept the last Draft with the Critique outstanding."""
+    return {"outstanding_critique": state.get("critique", "")}
