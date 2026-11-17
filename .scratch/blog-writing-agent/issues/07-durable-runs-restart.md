@@ -4,9 +4,11 @@
 
 **Blocked by:** 04: Outline stage and Gate 1
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A Run paused at a Gate resumes after a full server restart, continuing from its Checkpoint rather than restarting the pipeline
-- [ ] State accumulated before the restart (Research Notes, Outline, Revision count) is intact after it
-- [ ] The test simulates the restart between HTTP calls using a temporary SQLite checkpointer file
-- [ ] A resumed Run completes through the remaining pipeline stages
+- [x] A Run paused at a Gate resumes after a full server restart, continuing from its Checkpoint rather than restarting the pipeline
+- [x] State accumulated before the restart (Research Notes, Outline, Revision count) is intact after it
+- [x] The test simulates the restart between HTTP calls using a temporary SQLite checkpointer file
+- [x] A resumed Run completes through the remaining pipeline stages
+
+**Notes:** No fixes needed — the `ThreadSafeSqliteSaver` over one shared connection, and status derived from `graph.get_state`, already made persistence real. The tests build two app instances against the same SQLite file and runs folder; the first fully shuts down (executor drained, connection closed) before the second starts, so nothing in memory carries over. Two proofs: a paused Run resumes and completes with pre-restart Research Notes intact, and an Outline revision made *before* the restart still drives the post-restart draft. Script misalignment would fail these tests deterministically — a pipeline restart from scratch would consume the wrong scripted responses.

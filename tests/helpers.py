@@ -26,6 +26,40 @@ def script_draft_and_approve(
     ]
 
 
+def script_pipeline(model, outline: str) -> None:
+    """Script plan → research → outline for one Run."""
+    model.responses = [
+        AIMessage(content="Angle: state as the spine of the agent."),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "web_search",
+                    "args": {"query": "langgraph state"},
+                    "id": "call_1",
+                }
+            ],
+        ),
+        AIMessage(content="## Research Notes\n- durable state matters"),
+        AIMessage(content=outline),
+    ]
+
+
+def script_verdict(model, critique: str, verdict: str) -> None:
+    """Append one Draft response plus one Critic Verdict to the script."""
+    model.responses = model.responses + [
+        AIMessage(content=f"# Draft\n\nBody for: {critique}"),
+        AIMessage(content=f'{{"critique": "{critique}", "verdict": "{verdict}"}}'),
+    ]
+
+
+def artifacts(client: TestClient, run_id: str) -> list[str]:
+    """The Run's Artifact names, in list order."""
+    listing = client.get(f"/runs/{run_id}/artifacts")
+    assert listing.status_code == 200
+    return [a["name"] for a in listing.json()["artifacts"]]
+
+
 def wait_for_status(
     client: TestClient,
     run_id: str,
